@@ -24,6 +24,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [shareCopied, setShareCopied] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     const queryParams = new URLSearchParams(window.location.search);
@@ -56,11 +57,20 @@ export default function App() {
   }, []);
 
   const login = async () => {
+    setAuthError(null);
     const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
     try {
       await signInWithPopup(auth, provider);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error signing in", error);
+      if (error.code === "auth/popup-closed-by-user") {
+        setAuthError("Đăng nhập bị hủy.");
+      } else if (error.code === "auth/popup-blocked") {
+        setAuthError("Vui lòng cho phép popup để đăng nhập.");
+      } else {
+        setAuthError("Lỗi đăng nhập, vui lòng thử lại sau.");
+      }
     }
   };
 
@@ -204,6 +214,12 @@ export default function App() {
           Tải lên mô hình 3D của bạn để xem trên trình duyệt và chia sẻ. Hỗ trợ
           định dạng .glb và .gltf.
         </p>
+
+        {authError && (
+          <div className="mb-4 w-full p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100">
+            {authError}
+          </div>
+        )}
 
         {!user ? (
           <div className="w-full flex flex-col gap-3">
