@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helpers
+    function isSignedIn() { return request.auth != null; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function isValidModelMetadata(data) {
+      return data.keys().hasAll(['name', 'url', 'ownerId', 'createdAt'])
+        && data.keys().size() == 4
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 256
+        && data.url is string && data.url.size() > 0 && data.url.size() <= 1024
+        && data.ownerId is string && data.ownerId == request.auth.uid
+        && data.createdAt == request.time;
+    }
+
+    match /models/{modelId} {
+      // Users can read any model (or we can restrict to owners)
+      // Let's make it public to anyone for viewing, so we don't require login to fetch models if we have an ID
+      allow get: if true; 
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && isValidId(modelId)
+        && isValidModelMetadata(incoming());
+      
+      allow delete: if isSignedIn()
+        && isValidId(modelId)
+        && existing().ownerId == request.auth.uid;
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "entities": {
+    "ModelMetadata": {
+      "title": "ModelMetadata",
+      "description": "Metadata for a 3D model uploaded to Firebase Storage.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Original filename."
+        },
+        "url": {
+          "type": "string",
+          "description": "Firebase Storage download URL."
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the user who uploaded the model."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["name", "url", "ownerId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/models/{modelId}": {
+      "schema": {
+        "$ref": "#/entities/ModelMetadata"
+      },
+      "description": "Stores metadata of uploaded 3D models."
+    }
+  }
+}
