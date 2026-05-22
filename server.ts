@@ -12,7 +12,7 @@ async function startServer() {
 
   // Proxy upload route to upload large files directly from the server, bypassing R2 CORS entirely.
   // Must be registered before express.json() to prevent JSON body-parsing of binary models.
-  app.post("/api/upload-proxy", express.raw({ limit: "100mb", type: "*/*" }), async (req, res) => {
+  app.post("/api/upload-proxy", async (req, res) => {
     try {
       const fileName = req.query.fileName as string;
       const contentType = req.query.contentType as string || "application/octet-stream";
@@ -37,6 +37,14 @@ async function startServer() {
         endpoint = cleanEndpointMatch[1];
       }
 
+      // Collect the stream manually into a Buffer to guarantee the AWS S3 client receives
+      // a concrete buffer and does not throw "Unable to calculate hash for flowing readable stream".
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) {
+        chunks.push(chunk);
+      }
+      const buffer = Buffer.concat(chunks);
+
       const s3Client = new S3Client({
         region: "auto",
         endpoint: endpoint,
@@ -49,8 +57,9 @@ async function startServer() {
       const command = new PutObjectCommand({
         Bucket: bucketName,
         Key: fileName,
-        Body: req.body, // Buffers from express.raw()
+        Body: buffer,
         ContentType: contentType,
+        ContentLength: buffer.length,
       });
 
       await s3Client.send(command);
