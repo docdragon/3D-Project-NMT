@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
@@ -8,6 +9,61 @@ const PORT = 3000;
 
 async function startServer() {
   const app = express();
+
+  // Proxy upload route to upload large files directly from the server, bypassing R2 CORS entirely.
+  // Must be registered before express.json() to prevent JSON body-parsing of binary models.
+  app.post("/api/upload-proxy", express.raw({ limit: "100mb", type: "*/*" }), async (req, res) => {
+    try {
+      const fileName = req.query.fileName as string;
+      const contentType = req.query.contentType as string || "application/octet-stream";
+
+      if (!fileName) {
+        return res.status(400).json({ error: "fileName is required" });
+      }
+
+      let endpoint = process.env.R2_ENDPOINT;
+      const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+      const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+      const bucketName = process.env.R2_BUCKET_NAME;
+      const publicUrlBase = process.env.R2_PUBLIC_URL;
+
+      if (!endpoint || !accessKeyId || !secretAccessKey || !bucketName) {
+        return res.status(500).json({ error: "Cloudflare R2 is not fully configured on the server." });
+      }
+
+      // Automatically clean the endpoint if it contains the bucket name path at the end
+      const cleanEndpointMatch = endpoint.match(/^(https:\/\/[a-zA-Z0-9-]+\.r2\.cloudflarestorage\.com)/i);
+      if (cleanEndpointMatch) {
+        endpoint = cleanEndpointMatch[1];
+      }
+
+      const s3Client = new S3Client({
+        region: "auto",
+        endpoint: endpoint,
+        credentials: {
+          accessKeyId: accessKeyId,
+          secretAccessKey: secretAccessKey,
+        },
+      });
+
+      const command = new PutObjectCommand({
+        Bucket: bucketName,
+        Key: fileName,
+        Body: req.body, // Buffers from express.raw()
+        ContentType: contentType,
+      });
+
+      await s3Client.send(command);
+
+      const publicUrl = publicUrlBase ? `${publicUrlBase.replace(/\/$/, '')}/${fileName}` : `https://${bucketName}.r2.cloudflarestorage.com/${fileName}`;
+
+      res.json({ publicUrl, fileName });
+    } catch (error: any) {
+      console.error("Error direct-proxying upload to R2:", error);
+      res.status(500).json({ error: error.message || "Failed to proxy upload to R2" });
+    }
+  });
+
   app.use(express.json());
 
   // API Routes

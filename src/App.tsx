@@ -57,32 +57,72 @@ export default function App() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || "Lỗi lấy URL upload");
       }
 
       const { uploadUrl, publicUrl } = await response.json();
 
-      // 2. Upload file to R2 using the presigned URL
-      const uploadResponse = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: {
-          "Content-Type": file.type || "application/octet-stream",
-        },
-         body: file,
-      });
+      // 2. Try to upload file directly to R2 using the presigned URL
+      try {
+        const uploadResponse = await fetch(uploadUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": file.type || "application/octet-stream",
+          },
+          body: file,
+        });
 
-      if (!uploadResponse.ok) {
-         throw new Error("Lỗi khi tải file lên R2");
+        if (!uploadResponse.ok) {
+          throw new Error("Không thể lưu trực tiếp lên R2.");
+        }
+
+        // 3. Set public URL
+        const finalUrl = publicUrl || uploadUrl.split("?")[0];
+        window.history.pushState({}, "", `?url=${encodeURIComponent(finalUrl)}`);
+        setModelUrl(finalUrl);
+      } catch (directUploadErr: any) {
+        console.warn("Direct browser upload to R2 failed (likely due to CORS or network constraints). Attempting server proxy fallback...", directUploadErr);
+        
+        // Proxy Fallback: bypass CORS by uploading through our backend container
+        const proxyResponse = await fetch(`/api/upload-proxy?fileName=${encodeURIComponent(fileName)}&contentType=${encodeURIComponent(file.type || "application/octet-stream")}`, {
+          method: "POST",
+          body: file,
+        });
+
+        if (!proxyResponse.ok) {
+          const proxyErrData = await proxyResponse.json().catch(() => ({}));
+          throw new Error(
+            proxyErrData.error || 
+            "Giao thức upload trực tiếp và proxy dự phòng đều thất bại. Có thể do khóa bí mật (Secret/Key) hoặc Endpoint R2 chưa đúng."
+          );
+        }
+
+        const { publicUrl: proxyPublicUrl } = await proxyResponse.json();
+        const finalUrl = proxyPublicUrl;
+        window.history.pushState({}, "", `?url=${encodeURIComponent(finalUrl)}`);
+        setModelUrl(finalUrl);
       }
-
-      // 3. Set public URL
-      const finalUrl = publicUrl || uploadUrl.split("?")[0];
-      window.history.pushState({}, "", `?url=${encodeURIComponent(finalUrl)}`);
-      setModelUrl(finalUrl);
     } catch (error: any) {
       console.error("Lỗi tải lên R2:", error);
-      setUploadError(error.message || "Không thể tải lên file. Vui lòng cấu hình Cloudflare R2.");
+      
+      const isNetworkOrCorsError = !error.message || error.message.includes("Failed to fetch") || error.message.includes("fetch");
+      if (isNetworkOrCorsError) {
+        setUploadError(
+          "Lỗi CORS/Mạng: Không thể tải trực tiếp đến Cloudflare R2 từ trình duyệt. " +
+          "Bạn hãy cấu hình CORS cho Bucket trên Cloudflare R2 dashboard (đi tới R2 -> Bucket -> Settings -> CORS Policy) " +
+          "và áp dụng quy tắc sau:\n\n" +
+          "[\n" +
+          "  {\n" +
+          "    \"AllowedOrigins\": [\"*\"],\n" +
+          "    \"AllowedMethods\": [\"GET\", \"PUT\", \"POST\", \"DELETE\", \"HEAD\"],\n" +
+          "    \"AllowedHeaders\": [\"*\"]\n" +
+          "  }\n" +
+          "]"
+        );
+      } else {
+        setUploadError(error.message || "Không thể tải lên file. Vui lòng kiểm tra lại cấu hình thông tin R2.");
+      }
     } finally {
       setUploading(false);
     }
