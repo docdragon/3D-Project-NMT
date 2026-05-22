@@ -11,6 +11,10 @@ async function startServer() {
   app.use(express.json());
 
   // API Routes
+  app.get("/api/get-upload-url", (req, res) => {
+    res.json({ status: "ok", message: "Cloudflare R2 API is ready. Please use POST to generate presigned URLs." });
+  });
+
   app.post("/api/get-upload-url", async (req, res) => {
     try {
       const { fileName, contentType } = req.body;
