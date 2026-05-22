@@ -22,7 +22,7 @@ async function startServer() {
         return res.status(400).json({ error: "fileName is required" });
       }
 
-      const endpoint = process.env.R2_ENDPOINT;
+      let endpoint = process.env.R2_ENDPOINT;
       const accessKeyId = process.env.R2_ACCESS_KEY_ID;
       const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
       const bucketName = process.env.R2_BUCKET_NAME;
@@ -30,6 +30,13 @@ async function startServer() {
 
       if (!endpoint || !accessKeyId || !secretAccessKey || !bucketName) {
         return res.status(500).json({ error: "Cloudflare R2 is not configured on the server." });
+      }
+
+      // Tự động làm sạch endpoint nếu người dùng dán kèm tên bucket ở cuối
+      // Ví dụ: https://<account_id>.r2.cloudflarestorage.com/nmt3d -> https://<account_id>.r2.cloudflarestorage.com
+      const cleanEndpointMatch = endpoint.match(/^(https:\/\/[a-zA-Z0-9-]+\.r2\.cloudflarestorage\.com)/i);
+      if (cleanEndpointMatch) {
+        endpoint = cleanEndpointMatch[1];
       }
 
       const s3Client = new S3Client({
