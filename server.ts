@@ -52,6 +52,7 @@ async function startServer() {
           accessKeyId: accessKeyId,
           secretAccessKey: secretAccessKey,
         },
+        forcePathStyle: true,
       });
 
       const command = new PutObjectCommand({
@@ -111,6 +112,7 @@ async function startServer() {
           accessKeyId: accessKeyId,
           secretAccessKey: secretAccessKey,
         },
+        forcePathStyle: true,
       });
 
       const command = new PutObjectCommand({
